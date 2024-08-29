@@ -1,0 +1,205 @@
+version: 0.1
+
+# This flag enables your test to run using Device Farm's Amazon Linux 2 test host when scheduled on
+# Android devices. By default, iOS device tests will always run on Device Farm's macOS test hosts.
+# For Android, you can explicitly select your test host to use our Amazon Linux 2 infrastructure.
+# For more information, please see:
+# https://docs.aws.amazon.com/devicefarm/latest/developerguide/amazon-linux-2.html
+android_test_host: amazon_linux_2
+
+# Phases represent collections of commands that are executed during your test run on the test host.
+phases:
+
+  # The install phase contains commands for installing dependencies to run your tests.
+  # For your convenience, certain dependencies are preinstalled on the test host. 
+
+  # For Android tests running on the Amazon Linux 2 test host, many software libraries are available
+  # from the test host using the devicefarm-cli tool. To learn more, please see:
+  # https://docs.aws.amazon.com/devicefarm/latest/developerguide/amazon-linux-2-devicefarm-cli.html
+
+  # For iOS tests, you can use the Node.JS tools nvm, npm, and avm to setup your environment. By
+  # default, Node.js versions 16.20.2 and 14.19.3 are available on the test host.
+  install:
+    commands:
+      # The Appium server is written using Node.js. In order to run your desired version of Appium,
+      # you first need to set up a Node.js environment that is compatible with your version of Appium.
+      - |-
+        if [ $DEVICEFARM_DEVICE_PLATFORM_NAME = "Android" ];
+        then
+          devicefarm-cli use node 16;
+        else
+          # For iOS, use "nvm use" to switch between the two preinstalled NodeJS versions 14 and 16,
+          # and use "nvm install" to download a new version of your choice.
+          nvm use 16;
+        fi;
+      - node --version
+
+      # Use the devicefarm-cli to select a preinstalled major version of Appium on Android.
+      # Use avm or npm to select Appium for iOS.
+      - |-
+        if [ $DEVICEFARM_DEVICE_PLATFORM_NAME = "Android" ];
+        then
+          # For Android, the Device Farm service automatically updates the preinstalled Appium versions
+          # over time to incorporate the latest minor and patch versions for each major version. If you
+          # wish to select a specific version of Appium, you can instead use NPM to install it:
+          # npm install -g appium@2.1.3;
+          devicefarm-cli use appium 2;
+        else
+          # For iOS, Appium versions 1.22.2 and 2.2.1 are preinstalled and selectable through avm.
+          # For all other versions, please use npm to install them. For example:
+          # npm install -g appium@2.1.3;
+          # Note that, for iOS devices, Appium 2 is only supported on iOS version 14 and above using
+          # NodeJS version 16 and above.
+          avm 2.2.1;
+        fi;
+      - appium --version
+
+      # For Appium version 2, for Android tests, Device Farm automatically updates the preinstalled
+      # UIAutomator2 driver over time to incorporate the latest minor and patch versions for its major
+      # version 2. If you want to install a specific version of the driver, you can use the Appium
+      # extension CLI to uninstall the existing UIAutomator2 driver and install your desired version:
+      # - |-
+      #   if [ $DEVICEFARM_DEVICE_PLATFORM_NAME = "Android" ];
+      #   then
+      #     appium driver uninstall uiautomator2;
+      #     appium driver install uiautomator2@2.34.0;
+      #   fi;
+
+      # For Appium version 2, for iOS tests, the XCUITest driver is preinstalled using version 5.7.0
+      # If you want to install a different version of the driver, you can use the Appium extension CLI
+      # to uninstall the existing XCUITest driver and install your desired version:
+      # - |-
+      #   if [ $DEVICEFARM_DEVICE_PLATFORM_NAME = "iOS" ];
+      #   then
+      #     appium driver uninstall xcuitest;
+      #     appium driver install xcuitest@5.8.1;
+      #   fi;
+
+      # We recommend setting the Appium server's base path explicitly for accepting commands.
+      - export APPIUM_BASE_PATH=/wd/hub
+
+      # The following will setup Dot Net on your host machine
+      - cd $DEVICEFARM_TEST_PACKAGE_PATH
+      - >-
+        if [ $DEVICEFARM_DEVICE_PLATFORM_NAME = "Android" ];
+        then
+            echo "Downloading Dot Net for Linux";
+            curl -L "https://download.visualstudio.microsoft.com/download/pr/8828b97b-7bfd-4b1b-a646-e55bddc0d7ad/e2f7d168ad273e78fbae72ffb6d215d3/dotnet-sdk-6.0.419-linux-x64.tar.gz" -o dotnet.tar.gz;
+            # curl -L "https://download.visualstudio.microsoft.com/download/pr/db901b0a-3144-4d07-b8ab-6e7a43e7a791/4d9d1b39b879ad969c6c0ceb6d052381/dotnet-sdk-8.0.401-linux-x64.tar.gz" -o dotnet.tar.gz;
+        else
+            echo "Downloading Dot Net for macOS";
+            DEVICEFARM_DEVICE_MAJOR_OS_VERSION=$(echo $DEVICEFARM_DEVICE_OS_VERSION | cut -d "." -f 1);
+            if [ $DEVICEFARM_DEVICE_MAJOR_OS_VERSION -le 16 ];
+            then
+              curl -L "https://download.visualstudio.microsoft.com/download/pr/f9e10850-734b-4267-8fd4-27a8e0f83cb9/1ac81544781feb8717c584d991f831c3/dotnet-sdk-6.0.419-osx-x64.tar.gz" -o dotnet.tar.gz;
+            else
+              curl -L "https://download.visualstudio.microsoft.com/download/pr/c4bdba21-86ac-4c0b-8d65-c26459e115ee/8fcb7e012eda317486ad00d095cddba4/dotnet-sdk-6.0.419-osx-arm64.tar.gz" -o dotnet.tar.gz;
+            fi;
+        fi;
+      - tar -xzf dotnet.tar.gz
+      - export PATH=$DEVICEFARM_TEST_PACKAGE_PATH:$PATH
+      # Print info on the dotnet version that we installed
+      - dotnet --info
+      - dotnet add package Appium.WebDriver  --prerelease
+      - dotnet add package Newtonsoft.Json --version 13.0.3
+
+  # The pre-test phase contains commands for setting up your test environment.
+  pre_test:
+    commands:
+      # Device farm provides different pre-built versions of WebDriverAgent, an essential Appium
+      # dependency for iOS devices, and each version is suggested for different versions of Appium:
+      # DEVICEFARM_WDA_DERIVED_DATA_PATH_V8: this version is suggested for Appium 2
+      # DEVICEFARM_WDA_DERIVED_DATA_PATH_V7: this version is suggested for Appium 1
+      # Additionally, for iOS versions 16 and below, the device unique identifier (UDID) needs
+      # to be slightly modified for Appium tests.
+      - |-
+        if [ $DEVICEFARM_DEVICE_PLATFORM_NAME = "iOS" ];
+        then
+          if [ $(appium --version | cut -d "." -f1) -ge 2 ];
+          then
+            DEVICEFARM_WDA_DERIVED_DATA_PATH=$DEVICEFARM_WDA_DERIVED_DATA_PATH_V8;
+          else
+            DEVICEFARM_WDA_DERIVED_DATA_PATH=$DEVICEFARM_WDA_DERIVED_DATA_PATH_V7;
+          fi;
+          
+          if [ $(echo $DEVICEFARM_DEVICE_OS_VERSION | cut -d "." -f 1) -le 16 ];
+          then
+            DEVICEFARM_DEVICE_UDID_FOR_APPIUM=$(echo $DEVICEFARM_DEVICE_UDID | tr -d "-");
+          else
+            DEVICEFARM_DEVICE_UDID_FOR_APPIUM=$DEVICEFARM_DEVICE_UDID;
+          fi;
+        fi;
+
+      # Appium downloads Chromedriver using a feature that is considered insecure for multitenant
+      # environments. This is not a problem for Device Farm because each test host is allocated
+      # exclusively for one customer, then terminated entirely. For more information, please see
+      # https://github.com/appium/appium/blob/master/packages/appium/docs/en/guides/security.md
+
+      # We recommend starting the Appium server process in the background using the command below.
+      # The Appium server log will be written to the $DEVICEFARM_LOG_DIR directory.
+      # The environment variables passed as capabilities to the server will be automatically assigned
+      # during your test run based on your test's specific device.
+      # For more information about which environment variables are set and how they're set, please see
+      # https://docs.aws.amazon.com/devicefarm/latest/developerguide/custom-test-environment-variables.html
+      - |-
+        if [ $DEVICEFARM_DEVICE_PLATFORM_NAME = "Android" ];
+        then
+          appium --base-path=$APPIUM_BASE_PATH --log-timestamp \
+            --log-no-colors --relaxed-security --default-capabilities \
+            "{\"appium:deviceName\": \"$DEVICEFARM_DEVICE_NAME\", \
+            \"platformName\": \"$DEVICEFARM_DEVICE_PLATFORM_NAME\", \
+            \"appium:app\": \"$DEVICEFARM_APP_PATH\", \
+            \"appium:udid\":\"$DEVICEFARM_DEVICE_UDID\", \
+            \"appium:platformVersion\": \"$DEVICEFARM_DEVICE_OS_VERSION\", \
+            \"appium:chromedriverExecutableDir\": \"$DEVICEFARM_CHROMEDRIVER_EXECUTABLE_DIR\", \
+            \"appium:automationName\": \"UiAutomator2\"}" \
+            >> $DEVICEFARM_LOG_DIR/appium.log 2>&1 &
+        else
+          appium --base-path=$APPIUM_BASE_PATH --log-timestamp \
+            --log-no-colors --relaxed-security --default-capabilities \
+            "{\"appium:deviceName\": \"$DEVICEFARM_DEVICE_NAME\", \
+            \"platformName\": \"$DEVICEFARM_DEVICE_PLATFORM_NAME\", \
+            \"appium:app\": \"$DEVICEFARM_APP_PATH\", \
+            \"appium:udid\":\"$DEVICEFARM_DEVICE_UDID_FOR_APPIUM\", \
+            \"appium:platformVersion\": \"$DEVICEFARM_DEVICE_OS_VERSION\", \
+            \"appium:derivedDataPath\": \"$DEVICEFARM_WDA_DERIVED_DATA_PATH\", \
+            \"appium:usePrebuiltWDA\": true, \
+            \"appium:automationName\": \"XCUITest\"}" \
+            >> $DEVICEFARM_LOG_DIR/appium.log 2>&1 &
+        fi;
+
+      # This code will wait until the Appium server starts.
+      - |-
+        appium_initialization_time=0;
+        until curl --silent --fail "http://0.0.0.0:4723${APPIUM_BASE_PATH}/status"; do
+          if [[ $appium_initialization_time -gt 30 ]]; then
+            echo "Appium did not start within 30 seconds. Exiting...";
+            exit 1;
+          fi;
+          appium_initialization_time=$((appium_initialization_time + 1));
+          echo "Waiting for Appium to start on port 4723...";
+          sleep 1;
+        done;
+
+  # The test phase contains commands for running your tests.
+  test:
+    commands:
+      # Your test package is downloaded in $DEVICEFARM_TEST_PACKAGE_PATH so we first change directory to that path.
+      # We already setup python virtual environment on $DEVICEFARM_TEST_PACKAGE_PATH
+      # and installed required libraries. You can run your test under $DEVICEFARM_TEST_PACKAGE_PATH
+      - echo "Navigate to test package directory"
+      - cd $DEVICEFARM_TEST_PACKAGE_PATH
+      - echo "Starting my test"
+
+      - dotnet test
+
+  # The post test phase includes commands that are run after your tests are executed.
+  post_test:
+    commands:
+
+# The artifacts phase lets you specify the location where your tests logs, device logs will be stored.
+# And also let you specify the location of your test logs and artifacts which you want to be collected by Device Farm.
+# These logs and artifacts will be available through ListArtifacts API in Device Farm.
+artifacts:
+  # By default, Device Farm will collect your artifacts from following directories
+  - $DEVICEFARM_LOG_DIR
