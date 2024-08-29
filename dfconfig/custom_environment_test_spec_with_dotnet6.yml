@@ -85,7 +85,6 @@ phases:
         then
             echo "Downloading Dot Net for Linux";
             curl -L "https://download.visualstudio.microsoft.com/download/pr/8828b97b-7bfd-4b1b-a646-e55bddc0d7ad/e2f7d168ad273e78fbae72ffb6d215d3/dotnet-sdk-6.0.419-linux-x64.tar.gz" -o dotnet.tar.gz;
-            # curl -L "https://download.visualstudio.microsoft.com/download/pr/db901b0a-3144-4d07-b8ab-6e7a43e7a791/4d9d1b39b879ad969c6c0ceb6d052381/dotnet-sdk-8.0.401-linux-x64.tar.gz" -o dotnet.tar.gz;
         else
             echo "Downloading Dot Net for macOS";
             DEVICEFARM_DEVICE_MAJOR_OS_VERSION=$(echo $DEVICEFARM_DEVICE_OS_VERSION | cut -d "." -f 1);
